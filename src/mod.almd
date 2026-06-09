@@ -1,0 +1,48 @@
+// fizz_memory_l1_ring — per-user 直近発言のインメモリ リングバッファ (L1)。
+//
+// 責務 (一行): user_id ごとに直近 N 件の MemoryEvent を保持し、recall 時に
+// 即返す (LLM も I/O も無い hot path)。
+//
+// 記憶の 3 層 (L1 ring / L2 events 永続 / L3 summarizer) のうち、ここは最速層。
+// 推論の hot path は L1 だけ見れば「同じ枠で直前に何を言ったか」が分かる。
+// 永続化・要約は別部品 (fizz-memory-l2-events / fizz-memory-l3-summarizer) の
+// 責務で、ここには持たない。
+//
+// バッファは user_id ごとに cap 件で頭打ち。古い順に保持し (末尾が最新)、
+// cap を超えたら先頭 (最古) から落とす。長時間配信のメモリ膨張を防ぐ
+// trade-off — cap より前の発言は L1 からは消える (L2 には残る)。
+//
+// 状態は `Map[Int, List[MemoryEvent]]`。almide の `mut` は関数引数で渡した Map に
+// mutable 借用を生成しない (in-place `map.insert` は `var` ローカル専用)。よって
+// dedupe と同じイミュータブル方式 — `note` は更新後の新 Ring を返す (map.set は
+// COW で新しい Map を返す)。呼び側は `ring = note(ring, ...)` で受け直す。
+
+import fizz_protocol.memory
+import map
+import list
+
+let DEFAULT_CAP = 16
+
+// user_id → 直近イベント (古い順、末尾が最新)。
+type Ring = Map[Int, List[memory.MemoryEvent]]
+
+fn new_ring() -> Ring = map.new()
+
+// イベントを該当ユーザーのバッファ末尾に積み、cap 超過ぶんを先頭から落とした
+// 新しい Ring を返す。cap の下限は 1 (0 以下は 1 に丸める)。
+fn note(buckets: Ring, cap: Int, e: memory.MemoryEvent) -> Ring = {
+  let c = if cap < 1 then 1 else cap
+  let cur = map.get_or(buckets, e.user_id, [])
+  let grown = cur + [e]
+  let n = list.len(grown)
+  let trimmed = if n <= c then grown else list.drop(grown, n - c)
+  map.set(buckets, e.user_id, trimmed)
+}
+
+// 直近 N 件 (古い順)。未知ユーザーは空リスト。
+fn recent(buckets: Ring, user_id: Int) -> List[memory.MemoryEvent] =
+  map.get_or(buckets, user_id, [])
+
+// このユーザーの保持件数 (recall 不要で件数だけ欲しいとき)。
+fn count(buckets: Ring, user_id: Int) -> Int =
+  list.len(map.get_or(buckets, user_id, []))

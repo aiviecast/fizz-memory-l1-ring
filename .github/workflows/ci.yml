@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  ALMIDE_VERSION: v0.26.6
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      # almide の WASM backend がコンパイラバグで落ちた際の
+      # native fallback (rustc 経由) に必要。
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: ~/.almide
+          key: ${{ runner.os }}-almide-${{ env.ALMIDE_VERSION }}-${{ hashFiles('almide.toml') }}
+          restore-keys: ${{ runner.os }}-almide-${{ env.ALMIDE_VERSION }}-
+      - name: Install Almide (prebuilt release)
+        run: |
+          curl -fsSL -o /tmp/almide.tar.gz \
+            "https://github.com/almide/almide/releases/download/${ALMIDE_VERSION}/almide-linux-x86_64.tar.gz"
+          tar xzf /tmp/almide.tar.gz -C /tmp
+          sudo install /tmp/almide-linux-x86_64/almide /usr/local/bin/almide
+          almide --version
+
+      - name: Type-check CLI entry
+        run: almide check src/main.almd
+      - name: Run tests
+        run: almide test
+      # `almide test` だけでは build 限定の codegen バグを見逃すため、
+      # CLI バイナリの full build も CI で検証する。
+      - name: Build CLI binary
+        run: |
+          mkdir -p build
+          almide build src/main.almd -o build/fizz-memory-l1-ring

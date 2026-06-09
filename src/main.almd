@@ -1,0 +1,67 @@
+// CLI エントリポイント — NDJSON で note / recall を受ける stateful フィルタ。
+//
+// stdin: 1 行 1 コマンド (Codec JSON)
+//   {"op":"note","event":{...MemoryEvent...}}   → バッファに積む (出力なし)
+//   {"op":"recall","user_id":N}                 → 直近 N 件を 1 行で返す
+//
+// stdout (recall のみ):
+//   {"user_id":N,"recent":[{...MemoryEvent...}, ...]}
+//
+// 不正な行は stderr に警告して読み飛ばす (パイプは止めない)。
+// 終了: EOF (read_line が "" を返したとき)。
+//
+//   ... | fizz-memory-l1-ring   (note を流し込みつつ recall を問い合わせる)
+
+import self as l1
+import fizz_protocol.memory
+import io
+import env
+import json
+import value
+import result
+import list
+import string
+import int
+
+local fn field(v: Value, k: String) -> Value = value.get(v, k) ?? value.null()
+local fn fstr(v: Value, k: String) -> String = result.unwrap_or(value.as_string(field(v, k)), "")
+local fn fint(v: Value, k: String) -> Int = result.unwrap_or(value.as_int(field(v, k)), 0)
+
+effect fn main() -> Unit = {
+  // cap は環境変数で上書き可。int.parse の auto-? 破綻を避けるため match で。
+  let cap = match int.parse(string.trim(env.get("FIZZ_L1_CAP") ?? "")) {
+    ok(n)  => n,
+    err(_) => l1.DEFAULT_CAP,
+  }
+  var ring = l1.new_ring()
+  var open = true
+  while open {
+    let line = io.read_line()
+    if string.trim(line) == "" then {
+      open = false
+    } else {
+      match json.parse(line) {
+        err(e) => eprintln("[l1-ring] bad json: ${e}"),
+        ok(v)  => {
+          let op = fstr(v, "op")
+          if op == "note" then {
+            match memory.event_decode(field(v, "event")) {
+              err(e)  => eprintln("[l1-ring] bad event: ${e}"),
+              ok(ev)  => { ring = l1.note(ring, cap, ev) },
+            }
+          } else if op == "recall" then {
+            let uid = fint(v, "user_id")
+            let evs = l1.recent(ring, uid)
+            let out = value.object([
+              ("user_id", value.int(uid)),
+              ("recent", value.array(list.map(evs, (e) => memory.event_encode(e)))),
+            ])
+            println(json.stringify(out))
+          } else {
+            eprintln("[l1-ring] unknown op: ${op}")
+          }
+        },
+      }
+    }
+  }
+}

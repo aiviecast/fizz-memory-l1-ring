@@ -1,0 +1,54 @@
+import self as l1
+import fizz_protocol.memory
+import list
+
+// テスト用イベント。qualified 平 record 構築 + qualified unit ctor (memory.User) は OK。
+// 空 tags は型付き let に分けないと Unknown 型のまま伝播する (almide v0.26)。
+local fn ev(id: Int, uid: Int, content: String) -> memory.MemoryEvent = {
+  let empty_tags: List[String] = []
+  memory.MemoryEvent {
+    id: id, user_id: uid, session_id: none, role: memory.User,
+    content: content, ts: id, tags: empty_tags,
+  }
+}
+
+local fn content_of(o: Option[memory.MemoryEvent]) -> String =
+  match o { some(e) => e.content, none => "<none>" }
+
+test "recent returns appended events oldest-first" {
+  var r = l1.new_ring()
+  r = l1.note(r, 8, ev(1, 1, "a"))
+  r = l1.note(r, 8, ev(2, 1, "b"))
+  let got = l1.recent(r, 1)
+  assert_eq(list.len(got), 2)
+  assert_eq(content_of(list.first(got)), "a")
+  assert_eq(content_of(list.last(got)), "b")
+}
+
+test "per-user isolation; unknown user is empty" {
+  var r = l1.new_ring()
+  r = l1.note(r, 8, ev(1, 1, "u1a"))
+  r = l1.note(r, 8, ev(2, 2, "u2a"))
+  assert_eq(l1.count(r, 1), 1)
+  assert_eq(l1.count(r, 2), 1)
+  assert_eq(l1.count(r, 999), 0)
+}
+
+test "cap evicts the oldest beyond N, keeps the newest" {
+  var r = l1.new_ring()
+  r = l1.note(r, 2, ev(1, 1, "a"))
+  r = l1.note(r, 2, ev(2, 1, "b"))
+  r = l1.note(r, 2, ev(3, 1, "c"))   // "a" を追い出す
+  let got = l1.recent(r, 1)
+  assert_eq(list.len(got), 2)
+  assert_eq(content_of(list.first(got)), "b")
+  assert_eq(content_of(list.last(got)), "c")
+}
+
+test "cap floor is 1" {
+  var r = l1.new_ring()
+  r = l1.note(r, 0, ev(1, 1, "a"))
+  r = l1.note(r, 0, ev(2, 1, "b"))
+  assert_eq(l1.count(r, 1), 1)
+  assert_eq(content_of(list.first(l1.recent(r, 1))), "b")
+}
