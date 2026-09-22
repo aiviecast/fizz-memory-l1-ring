@@ -50,5 +50,5 @@ WASM backend がコンパイラバグで落ちる場合の native fallback に r
 
 ## 契約
 
-[fizz-protocol](https://github.com/Aid-On/fizz-protocol) の `memory` モジュール
+[fizz-protocol](https://github.com/aiviecast/fizz-protocol) の `memory` モジュール
 (`MemoryEvent` / `MemoryRole` とその Codec)に依存。

@@ -4,4 +4,4 @@ version = "0.1.0"
 description = "Fizz memory L1 — per-user in-memory ring buffer of recent MemoryEvents (hot path; note/recall over NDJSON)"
 
 [dependencies]
-fizz_protocol = { git = "https://github.com/Aid-On/fizz-protocol", tag = "v0.2.1" }
+fizz_protocol = { git = "https://github.com/aiviecast/fizz-protocol", tag = "v0.2.1" }
