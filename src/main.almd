@@ -23,7 +23,7 @@ import list
 import string
 import int
 
-local fn field(v: Value, k: String) -> Value = value.get(v, k) ?? value.null()
+local fn field(v: Value, k: String) -> Value = value.field(v, k) ?? value.null()
 local fn fstr(v: Value, k: String) -> String = result.unwrap_or(value.as_string(field(v, k)), "")
 local fn fint(v: Value, k: String) -> Int = result.unwrap_or(value.as_int(field(v, k)), 0)
 
