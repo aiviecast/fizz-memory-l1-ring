@@ -32,7 +32,7 @@ fn new_ring() -> Ring = map.new()
 // 新しい Ring を返す。cap の下限は 1 (0 以下は 1 に丸める)。
 fn note(buckets: Ring, cap: Int, e: memory.MemoryEvent) -> Ring = {
   let c = if cap < 1 then 1 else cap
-  let cur = map.get_or(buckets, e.user_id, [])
+  let cur = map.get(buckets, e.user_id) ?? []
   let grown = cur + [e]
   let n = list.len(grown)
   let trimmed = if n <= c then grown else list.drop(grown, n - c)
@@ -41,8 +41,8 @@ fn note(buckets: Ring, cap: Int, e: memory.MemoryEvent) -> Ring = {
 
 // 直近 N 件 (古い順)。未知ユーザーは空リスト。
 fn recent(buckets: Ring, user_id: Int) -> List[memory.MemoryEvent] =
-  map.get_or(buckets, user_id, [])
+  map.get(buckets, user_id) ?? []
 
 // このユーザーの保持件数 (recall 不要で件数だけ欲しいとき)。
 fn count(buckets: Ring, user_id: Int) -> Int =
-  list.len(map.get_or(buckets, user_id, []))
+  list.len(map.get(buckets, user_id) ?? [])
